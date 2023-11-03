@@ -208,6 +208,8 @@ class SQLStorage(CacheStorage):
         if table_len_config is None:
             table_len_config = {}
         self._url = url
+        print(url)
+        print("*"*100)
         self._ques, self._answer, self._ques_dep, self._session, self._report = get_models(
             table_name, db_type, table_len_config
         )

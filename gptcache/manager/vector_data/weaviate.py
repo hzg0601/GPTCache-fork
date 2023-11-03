@@ -105,7 +105,7 @@ class Weaviate(VectorBase):
             self.client.query.get(class_name=self.class_name, properties=["data_id"])
             .with_near_vector(content={"vector": data})
             .with_additional(["distance"])
-            .with_limit(top_k)
+            .with_limit(top_k)PostgreSQL
             .do()
         )
 

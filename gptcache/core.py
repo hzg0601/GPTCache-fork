@@ -117,6 +117,7 @@ class Cache:
         import openai  # pylint: disable=C0415
 
         openai.api_key = os.getenv("OPENAI_API_KEY")
+        openai.api_base = os.getenv("OPENAI_API_BASE")
 
     @staticmethod
     def set_azure_openai_key():
