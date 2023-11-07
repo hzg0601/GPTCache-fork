@@ -58,7 +58,8 @@ def nop(messages: List[Any]) -> Any:
     """
     return messages
 
-
+# 如果temperature>0,则根据score和temperature计算加权概率，根据概率采样一个答案返回
+# 否则，返回得分最大的那个答案；
 def temperature_softmax(messages: List[Any], scores: List[float], temperature: float = 0.0) -> Any:
     """Post processing with temperature softmax after evaluation.
 

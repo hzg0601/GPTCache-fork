@@ -273,7 +273,10 @@ class SSDataManager(DataManager):
         session = kwargs.get("session", None)
         session_id = session.name if session else None
         self.import_data([question], [answer], [embedding_data], [session_id])
-
+    # 如果输入的answers是一个答案，则将其变为list；
+    # 对每个答案，如果answer的类型为str,
+    # 则将调用object管理器，然后将其组装为Answer类，存入list
+    # 否则直接存入list
     def _process_answer_data(self, answers: Union[Answer, List[Answer]]):
         if isinstance(answers, Answer):
             answers = [answers]
@@ -284,7 +287,12 @@ class SSDataManager(DataManager):
             else:
                 new_ans.append(ans)
         return new_ans
-
+    #?dep依赖数据
+    # 如果问题没有deps属性，则直接返回；
+    # 如果有，则针对dep的每个值，如果值的dep_type类型为IMAGE_URL,
+    # 则获取url的内容，将其存入object中，零dep.dep_type.data指向该object
+    # 保存完毕后，再返回question.
+    # 如果问题本身为str类型，则可将其组装为Question类型直接返回
     def _process_question_data(self, question: Union[str, Question]):
         if isinstance(question, Question):
             if question.deps is None:
@@ -296,7 +304,16 @@ class SSDataManager(DataManager):
             return question
 
         return Question(question)
-
+    # 首先对embedding进行normalize,
+    # 然后对每个答案,如果每个answer的类型不为str,且具有object管理器，则
+    # 调用_process_answer_data进行处理,构造为一个Answer的list
+    # 否则直接取出
+    # 将question处理为Question类，然后将question,ans,embedding_data,session_id
+    # 组装为CacheData类，存入cache_datas列表
+    # 调用关系数据库管理器的batch_insert函数存入关系数据库，返回ids，故question_id由
+    # 关系数据库建立，而向量数据库继承关系数据库的question_id
+    # 调用向量数据库的mul_add方法, 将question_id,embedding_data组装成的VectorData
+    # 存入向量数据库
     def import_data(
         self,
         questions: List[Any],
@@ -336,7 +353,14 @@ class SSDataManager(DataManager):
             ]
         )
         self.eviction_base.put(ids)
-
+    # get_scalar_data方法根据res_data，kwargs获取关系数据库的缓存数据
+    # res[1]为question_id,get_data_by_id根据question table中的id查找answer,deps,session_ids，
+    # 然后组装成CacheData返回，其中answer必然为一个list
+    #? 如果给出了session字段，则取出cache_data.answer的第一个返回值，作为cache_answer
+    #* 并根据question_id，取出对应的session中的数据,然后取出session_id,question
+    # 调用session.check_hit_func，检验取出session.name,session_ids,questions,answer是否匹配
+    # 如果不匹配，则直接返回
+    # 如果匹配，则视情况从object管理器取出数据，返回cache_data
     def get_scalar_data(self, res_data, **kwargs) -> Optional[CacheData]:
         session = kwargs.get("session", None)
         cache_data = self.s.get_data_by_id(res_data[1])
@@ -344,6 +368,7 @@ class SSDataManager(DataManager):
             return None
 
         if session:
+            #? 为什么只取一个answer?
             cache_answer = (
                 cache_data.answers[0].answer
                 if isinstance(cache_data.answers[0], Answer)
@@ -366,6 +391,7 @@ class SSDataManager(DataManager):
     def hit_cache_callback(self, res_data, **kwargs):
         self.eviction_base.get(res_data[1])
 
+    # 基于embedding_data在向量数据库中查找top_k个向量的distance，id
     def search(self, embedding_data, **kwargs):
         embedding_data = normalize(embedding_data)
         top_k = kwargs.get("top_k", -1)
@@ -374,10 +400,11 @@ class SSDataManager(DataManager):
     def flush(self):
         self.s.flush()
         self.v.flush()
-
+    # 在关系数据库中执行add_session，存入question_id,session_id,embedding_data
     def add_session(self, res_data, session_id, pre_embedding_data):
         self.s.add_session(res_data[1], session_id, pre_embedding_data)
-
+    # 在关系数据库中根据question_id或session_id取出session中的数据
+    # 如果传入的是session_id，则返回key列表，否则返回session_id列表
     def list_sessions(self, session_id=None, key=None):
         res = self.s.list_sessions(session_id, key)
         if key:
@@ -385,11 +412,13 @@ class SSDataManager(DataManager):
         if session_id:
             return list(r.id for r in res)
         return list(set(r.session_id for r in res))
-
+    # 传入session_id,执行关系数据库的查找，找到question_ids
+    # 在session表中删除这些数据
     def delete_session(self, session_id):
         keys = self.list_sessions(session_id=session_id)
         self.s.delete_session(keys)
-
+    # 根据传入字段从关系数据库管理器中调用report_cache方法
+    # 将数据加入report表格，add & commit
     def report_cache(
         self,
         user_question,
